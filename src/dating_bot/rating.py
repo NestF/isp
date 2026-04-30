@@ -1,0 +1,24 @@
+from __future__ import annotations
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from dating_bot.config import Config
+from dating_bot.repository import apply_match_bonus, ensure_match, inc_dislike, inc_like, is_mutual_like, set_vote
+
+
+async def vote_like(session: AsyncSession, cfg: Config, viewer_id: int, target_id: int) -> bool:
+    await set_vote(session, viewer_id, target_id, "like")
+    await inc_like(session, target_id, cfg.like_bonus)
+
+    mutual = await is_mutual_like(session, viewer_id, target_id)
+    if mutual:
+        created = await ensure_match(session, viewer_id, target_id)
+        await apply_match_bonus(session, viewer_id, target_id, cfg.match_bonus)
+        return created
+    return False
+
+
+async def vote_dislike(session: AsyncSession, cfg: Config, viewer_id: int, target_id: int) -> None:
+    await set_vote(session, viewer_id, target_id, "dislike")
+    await inc_dislike(session, target_id, cfg.dislike_penalty)
+
