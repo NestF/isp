@@ -74,7 +74,6 @@ async def recompute_scores(session: AsyncSession, cfg, tg_id: int):
             primary_score=d["primary_score"],
             behavior_score=d["behavior_score"],
             combined_score=d["combined_score"],
-            rating_score=d["combined_score"],
         )
     )
     await session.execute(

@@ -364,7 +364,6 @@ async def onboarding_media_controls(message: Message, state: FSMContext, cfg: Co
     payload["primary_score"] = primary
     payload["behavior_score"] = behavior
     payload["combined_score"] = compute_combined_score(payload, cfg)
-    payload["rating_score"] = payload["combined_score"]
 
     async with session_factory() as session:
         await upsert_profile(session, payload)

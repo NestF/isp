@@ -27,11 +27,13 @@ async def ensure_schema(engine) -> None:
         await conn.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS behavior_score DOUBLE PRECISION NOT NULL DEFAULT 0"))
         await conn.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS combined_score DOUBLE PRECISION NOT NULL DEFAULT 0"))
         await conn.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS referral_score DOUBLE PRECISION NOT NULL DEFAULT 0"))
+        await conn.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS rating_score DOUBLE PRECISION NOT NULL DEFAULT 1000.0"))
         await conn.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS dialogs_count INTEGER NOT NULL DEFAULT 0"))
         await conn.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS referrals_count INTEGER NOT NULL DEFAULT 0"))
         await conn.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS referred_by BIGINT"))
 
         await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_profiles_combined_score ON user_profiles (combined_score)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_profiles_rating_score ON user_profiles (rating_score)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_profiles_pref_city ON user_profiles (pref_city)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_profiles_gender ON user_profiles (gender)"))
 
