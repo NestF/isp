@@ -58,7 +58,12 @@ def profile_to_dict(p: UserProfile) -> dict:
 
 
 async def recompute_scores(session: AsyncSession, cfg, tg_id: int):
-    p = await get_profile(session, tg_id)
+    res = await session.execute(
+        select(UserProfile)
+        .where(UserProfile.tg_id == tg_id)
+        .execution_options(populate_existing=True)
+    )
+    p = res.scalar_one_or_none()
     if not p:
         return
     d = profile_to_dict(p)

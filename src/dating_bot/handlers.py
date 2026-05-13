@@ -20,10 +20,18 @@ from dating_bot.keyboards import (
     kb_profile_manage,
     kb_viewing,
 )
-from dating_bot.matching import build_candidate_batch, pick_next_candidate
+from dating_bot.matching import build_candidate_batch
 from dating_bot.models import UserProfile
 from dating_bot.rating import vote_dislike, vote_like
-from dating_bot.repository import add_referral, delete_profile, get_matches, get_profile, get_rank_info, upsert_profile
+from dating_bot.repository import (
+    add_referral,
+    delete_profile,
+    get_matches,
+    get_profile,
+    get_rank_info,
+    has_vote,
+    upsert_profile,
+)
 from dating_bot.ranking import compute_behavior_score, compute_combined_score, compute_primary_score
 from dating_bot.text import format_profile_text
 
@@ -90,10 +98,13 @@ async def _send_profile_one_message(message: Message, profile: dict, reply_marku
         first = media[0]
         t = first.get("type")
         fid = first.get("file_id")
-        if t == "photo" and fid:
-            return await message.answer_photo(photo=fid, caption=caption, reply_markup=reply_markup)
-        if t == "video" and fid:
-            return await message.answer_video(video=fid, caption=caption, reply_markup=reply_markup)
+        try:
+            if t == "photo" and fid:
+                return await message.answer_photo(photo=fid, caption=caption, reply_markup=reply_markup)
+            if t == "video" and fid:
+                return await message.answer_video(video=fid, caption=caption, reply_markup=reply_markup)
+        except Exception:
+            log.exception("Не удалось отправить медиа, шлю текст")
         return await message.answer(caption, reply_markup=reply_markup)
 
     items = []
@@ -102,12 +113,11 @@ async def _send_profile_one_message(message: Message, profile: dict, reply_marku
         fid = m.get("file_id")
         if not t or not fid:
             continue
+        item_caption = caption if idx == 0 else None
         if t == "photo":
-            im = InputMediaPhoto(media=fid)
+            im = InputMediaPhoto(media=fid, caption=item_caption)
         else:
-            im = InputMediaVideo(media=fid)
-        if idx == 0:
-            im.caption = caption
+            im = InputMediaVideo(media=fid, caption=item_caption)
         items.append(im)
 
     if not items:
@@ -117,8 +127,8 @@ async def _send_profile_one_message(message: Message, profile: dict, reply_marku
     try:
         sent_messages.extend(await message.answer_media_group(media=items))
     except Exception:
-        sent_messages.append(await message.answer(caption, reply_markup=reply_markup))
-        return sent_messages[0] if len(sent_messages) == 1 else sent_messages
+        log.exception("Не удалось отправить медиа-группу, шлю текст")
+        return await message.answer(caption, reply_markup=reply_markup)
 
     if reply_markup:
         sent_messages.append(await message.answer("Действия:", reply_markup=reply_markup))
@@ -142,10 +152,13 @@ async def _send_profile_one_message_to_chat(bot, chat_id: int, profile: dict, in
         first = media[0]
         t = first.get("type")
         fid = first.get("file_id")
-        if t == "photo" and fid:
-            return await bot.send_photo(chat_id=chat_id, photo=fid, caption=caption)
-        if t == "video" and fid:
-            return await bot.send_video(chat_id=chat_id, video=fid, caption=caption)
+        try:
+            if t == "photo" and fid:
+                return await bot.send_photo(chat_id=chat_id, photo=fid, caption=caption)
+            if t == "video" and fid:
+                return await bot.send_video(chat_id=chat_id, video=fid, caption=caption)
+        except Exception:
+            log.exception("Не удалось отправить медиа в чат, шлю текст")
         return await bot.send_message(chat_id=chat_id, text=caption)
 
     items = []
@@ -154,18 +167,21 @@ async def _send_profile_one_message_to_chat(bot, chat_id: int, profile: dict, in
         fid = m.get("file_id")
         if not t or not fid:
             continue
+        item_caption = caption if idx == 0 else None
         if t == "photo":
-            im = InputMediaPhoto(media=fid)
+            im = InputMediaPhoto(media=fid, caption=item_caption)
         else:
-            im = InputMediaVideo(media=fid)
-        if idx == 0:
-            im.caption = caption
+            im = InputMediaVideo(media=fid, caption=item_caption)
         items.append(im)
 
     if not items:
         return await bot.send_message(chat_id=chat_id, text=caption)
 
-    return await bot.send_media_group(chat_id=chat_id, media=items)
+    try:
+        return await bot.send_media_group(chat_id=chat_id, media=items)
+    except Exception:
+        log.exception("Не удалось отправить медиа-группу в чат, шлю текст")
+        return await bot.send_message(chat_id=chat_id, text=caption)
 
 
 async def show_card(message: Message, state: FSMContext, profile: dict, reply_markup=None) -> None:
@@ -188,6 +204,52 @@ async def send_menu(message: Message, state: FSMContext) -> None:
         last_card_message_ids=None,
         last_bot_message_id=None,
     )
+
+
+async def _pick_next_for_viewer(
+    session,
+    cfg: Config,
+    viewer: UserProfile,
+    cache: ProfileCache | None,
+) -> Optional[UserProfile]:
+    viewer_id = int(viewer.tg_id)
+
+    if cache:
+        for _ in range(50):
+            next_id = await cache.pop_next(viewer_id)
+            if not next_id:
+                break
+            nid = int(next_id)
+            if nid == viewer_id:
+                continue
+            if await has_vote(session, viewer_id, nid):
+                continue
+            cand = await get_profile(session, nid)
+            if cand:
+                return cand
+
+    ids = await build_candidate_batch(session, cfg, viewer, limit=10)
+    if not ids:
+        if cache:
+            await cache.clear_queue(viewer_id)
+        return None
+
+    fresh_ids: list[int] = []
+    for cid in ids:
+        if int(cid) == viewer_id:
+            continue
+        fresh_ids.append(int(cid))
+
+    if not fresh_ids:
+        if cache:
+            await cache.clear_queue(viewer_id)
+        return None
+
+    head = fresh_ids[0]
+    tail = fresh_ids[1:]
+    if cache:
+        await cache.replace_queue(viewer_id, tail)
+    return await get_profile(session, head)
 
 
 @router.message(Command("start"))
@@ -378,6 +440,7 @@ async def onboarding_media_controls(message: Message, state: FSMContext, cfg: Co
 
 @router.message(F.text == "🏠 Домой")
 async def home(message: Message, state: FSMContext):
+    await state.set_state(None)
     await send_menu(message, state)
 
 
@@ -499,27 +562,22 @@ async def start_viewing(message: Message, state: FSMContext, cfg: Config, sessio
             if cache:
                 await cache.del_profile(message.from_user.id)
                 await cache.del_candidate(message.from_user.id)
+                await cache.clear_queue(message.from_user.id)
             sent = await message.answer("Сначала создай анкету через /start.", reply_markup=kb_main())
             await state.update_data(last_menu_message_id=sent.message_id)
             return
-        candidate = None
+
         if cache:
-            next_id = await cache.pop_next(message.from_user.id)
-            if next_id:
-                candidate = await get_profile(session, int(next_id))
-        if not candidate:
-            ids = await build_candidate_batch(session, cfg, viewer, limit=10)
-            if cache:
-                await cache.replace_queue(message.from_user.id, ids)
-            if ids:
-                candidate = await get_profile(session, int(ids[0]))
-                if cache:
-                    await cache.pop_next(message.from_user.id)
+            await cache.clear_queue(message.from_user.id)
+
+        candidate = await _pick_next_for_viewer(session, cfg, viewer, cache)
 
         if not candidate:
+            await state.set_state(None)
             sent = await message.answer("Анкеты закончились.", reply_markup=kb_main())
             await state.update_data(last_menu_message_id=sent.message_id)
             return
+
         await state.set_state(Viewing.active)
         await state.update_data(current_target_id=int(candidate.tg_id))
         c = _profile_to_dict(candidate)
@@ -560,19 +618,7 @@ async def viewing_vote(message: Message, state: FSMContext, cfg: Config, session
         if matched:
             target_profile = await get_profile(session, int(target_id))
 
-        candidate = None
-        if cache:
-            next_id = await cache.pop_next(message.from_user.id)
-            if next_id:
-                candidate = await get_profile(session, int(next_id))
-        if not candidate:
-            ids = await build_candidate_batch(session, cfg, viewer, limit=10)
-            if cache:
-                await cache.replace_queue(message.from_user.id, ids)
-            if ids:
-                candidate = await get_profile(session, int(ids[0]))
-                if cache:
-                    await cache.pop_next(message.from_user.id)
+        candidate = await _pick_next_for_viewer(session, cfg, viewer, cache)
         await session.commit()
 
     if cache:

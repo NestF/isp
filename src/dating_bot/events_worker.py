@@ -3,8 +3,7 @@ import json
 import logging
 
 import aio_pika
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from dating_bot.config import load_config
 from dating_bot.models import Base
@@ -19,7 +18,7 @@ async def main():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     conn = await aio_pika.connect_robust(cfg.amqp_url)
     channel = await conn.channel()

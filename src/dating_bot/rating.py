@@ -16,11 +16,12 @@ async def vote_like(session: AsyncSession, cfg: Config, viewer_id: int, target_i
     mutual = await is_mutual_like(session, viewer_id, target_id)
     if mutual:
         created = await ensure_match(session, viewer_id, target_id)
-        await apply_match_bonus(session, viewer_id, target_id, cfg.match_bonus)
-        await recompute_scores(session, cfg, viewer_id)
-        await recompute_scores(session, cfg, target_id)
-        if publisher:
-            await publisher.publish("match", viewer_id, target_id, {"created": bool(created)})
+        if created:
+            await apply_match_bonus(session, viewer_id, target_id, cfg.match_bonus)
+            await recompute_scores(session, cfg, viewer_id)
+            await recompute_scores(session, cfg, target_id)
+            if publisher:
+                await publisher.publish("match", viewer_id, target_id, {"created": True})
         return created
     return False
 
