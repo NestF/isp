@@ -23,6 +23,7 @@ def kb_main() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="👤 Моя анкета"), KeyboardButton(text="💘 Мэтчи")],
+            [KeyboardButton(text="📈 Ранг")],
             [KeyboardButton(text="👀 Смотреть анкеты")],
         ],
         resize_keyboard=True,

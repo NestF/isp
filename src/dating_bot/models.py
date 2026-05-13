@@ -31,14 +31,28 @@ class UserProfile(Base):
     full_name: Mapped[str] = mapped_column(String(128), nullable=False)
     age: Mapped[int] = mapped_column(Integer, nullable=False)
     city: Mapped[str] = mapped_column(String(128), nullable=False)
+    gender: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    interests: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    pref_age_min: Mapped[int] = mapped_column(Integer, nullable=False, default=18)
+    pref_age_max: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    pref_gender: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    pref_city: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
 
     media: Mapped[list[dict]] = mapped_column(JSONB, nullable=False, default=list)
 
+    primary_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    behavior_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    combined_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    referral_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     rating_score: Mapped[float] = mapped_column(Float, nullable=False, default=1000.0)
     likes_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     dislikes_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     matches_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    dialogs_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    referrals_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    referred_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -90,3 +104,30 @@ class Match(Base):
 Index("ix_matches_u1", Match.user1_id)
 Index("ix_matches_u2", Match.user2_id)
 
+
+class ProfileRating(Base):
+    __tablename__ = "profile_ratings"
+
+    tg_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("user_profiles.tg_id", ondelete="CASCADE"), primary_key=True
+    )
+    primary_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    behavior_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    referral_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    combined_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class InteractionEvent(Base):
+    __tablename__ = "interaction_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    actor_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    target_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+Index("ix_events_type", InteractionEvent.event_type)
+Index("ix_events_created_at", InteractionEvent.created_at)

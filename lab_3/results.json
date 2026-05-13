@@ -1,0 +1,326 @@
+{
+  "base_url": "http://127.0.0.1:8000",
+  "strategies": {
+    "cache_aside": {
+      "read-heavy": {
+        "load": {
+          "workers": 40,
+          "duration_s": 4.43282729999919,
+          "read_pct": 80,
+          "write_pct": 20,
+          "keys": 1000
+        },
+        "client": {
+          "requests": 722,
+          "errors": 0,
+          "throughput_rps": 162.87573395880594,
+          "avg_latency_ms": 229.9073282546616
+        },
+        "server_delta": {
+          "strategy": "cache_aside",
+          "cache": {
+            "hits": 113,
+            "misses": 458,
+            "hit_rate": 0.1978984238178634
+          },
+          "db": {
+            "reads": 458,
+            "writes": 151
+          },
+          "write_back": {
+            "pending_keys_end": null,
+            "max_pending_keys": null,
+            "enqueued_writes": null,
+            "flushed_writes": null,
+            "flush_errors": null
+          },
+          "client_p95_latency_ms_sampled": 523.9791899912234
+        }
+      },
+      "balanced": {
+        "load": {
+          "workers": 40,
+          "duration_s": 4.993006099990453,
+          "read_pct": 50,
+          "write_pct": 50,
+          "keys": 1000
+        },
+        "client": {
+          "requests": 337,
+          "errors": 0,
+          "throughput_rps": 67.49440983071189,
+          "avg_latency_ms": 530.9157982198813
+        },
+        "server_delta": {
+          "strategy": "cache_aside",
+          "cache": {
+            "hits": 145,
+            "misses": 25,
+            "hit_rate": 0.8529411764705882
+          },
+          "db": {
+            "reads": 25,
+            "writes": 167
+          },
+          "write_back": {
+            "pending_keys_end": null,
+            "max_pending_keys": null,
+            "enqueued_writes": null,
+            "flushed_writes": null,
+            "flush_errors": null
+          },
+          "client_p95_latency_ms_sampled": 1044.8239899938926
+        }
+      },
+      "write-heavy": {
+        "load": {
+          "workers": 40,
+          "duration_s": 5.013150500002666,
+          "read_pct": 20,
+          "write_pct": 80,
+          "keys": 1000
+        },
+        "client": {
+          "requests": 214,
+          "errors": 0,
+          "throughput_rps": 42.687727009170416,
+          "avg_latency_ms": 842.8319845789642
+        },
+        "server_delta": {
+          "strategy": "cache_aside",
+          "cache": {
+            "hits": 41,
+            "misses": 6,
+            "hit_rate": 0.8723404255319149
+          },
+          "db": {
+            "reads": 6,
+            "writes": 167
+          },
+          "write_back": {
+            "pending_keys_end": null,
+            "max_pending_keys": null,
+            "enqueued_writes": null,
+            "flushed_writes": null,
+            "flush_errors": null
+          },
+          "client_p95_latency_ms_sampled": 1376.7950250075955
+        }
+      }
+    },
+    "write_through": {
+      "read-heavy": {
+        "load": {
+          "workers": 40,
+          "duration_s": 4.475386299993261,
+          "read_pct": 80,
+          "write_pct": 20,
+          "keys": 1000
+        },
+        "client": {
+          "requests": 756,
+          "errors": 0,
+          "throughput_rps": 168.92396529013337,
+          "avg_latency_ms": 223.6829624336255
+        },
+        "server_delta": {
+          "strategy": "write_through",
+          "cache": {
+            "hits": 159,
+            "misses": 439,
+            "hit_rate": 0.26588628762541805
+          },
+          "db": {
+            "reads": 439,
+            "writes": 158
+          },
+          "write_back": {
+            "pending_keys_end": null,
+            "max_pending_keys": null,
+            "enqueued_writes": null,
+            "flushed_writes": null,
+            "flush_errors": null
+          },
+          "client_p95_latency_ms_sampled": 557.3747499911406
+        }
+      },
+      "balanced": {
+        "load": {
+          "workers": 40,
+          "duration_s": 4.97948880000331,
+          "read_pct": 50,
+          "write_pct": 50,
+          "keys": 1000
+        },
+        "client": {
+          "requests": 368,
+          "errors": 0,
+          "throughput_rps": 73.90316853403816,
+          "avg_latency_ms": 484.3652307060003
+        },
+        "server_delta": {
+          "strategy": "write_through",
+          "cache": {
+            "hits": 180,
+            "misses": 7,
+            "hit_rate": 0.9625668449197861
+          },
+          "db": {
+            "reads": 7,
+            "writes": 181
+          },
+          "write_back": {
+            "pending_keys_end": null,
+            "max_pending_keys": null,
+            "enqueued_writes": null,
+            "flushed_writes": null,
+            "flush_errors": null
+          },
+          "client_p95_latency_ms_sampled": 1073.1544700000086
+        }
+      },
+      "write-heavy": {
+        "load": {
+          "workers": 40,
+          "duration_s": 5.089372500005993,
+          "read_pct": 20,
+          "write_pct": 80,
+          "keys": 1000
+        },
+        "client": {
+          "requests": 236,
+          "errors": 0,
+          "throughput_rps": 46.37113907455626,
+          "avg_latency_ms": 769.8914572035808
+        },
+        "server_delta": {
+          "strategy": "write_through",
+          "cache": {
+            "hits": 50,
+            "misses": 1,
+            "hit_rate": 0.9803921568627451
+          },
+          "db": {
+            "reads": 1,
+            "writes": 185
+          },
+          "write_back": {
+            "pending_keys_end": null,
+            "max_pending_keys": null,
+            "enqueued_writes": null,
+            "flushed_writes": null,
+            "flush_errors": null
+          },
+          "client_p95_latency_ms_sampled": 1159.0596350077249
+        }
+      }
+    },
+    "write_back": {
+      "read-heavy": {
+        "load": {
+          "workers": 40,
+          "duration_s": 4.82223810000869,
+          "read_pct": 80,
+          "write_pct": 20,
+          "keys": 1000
+        },
+        "client": {
+          "requests": 3980,
+          "errors": 0,
+          "throughput_rps": 825.342904572221,
+          "avg_latency_ms": 42.345802487350504
+        },
+        "server_delta": {
+          "strategy": "write_back",
+          "cache": {
+            "hits": 2416,
+            "misses": 792,
+            "hit_rate": 0.7531172069825436
+          },
+          "db": {
+            "reads": 792,
+            "writes": 130
+          },
+          "write_back": {
+            "pending_keys_end": 506,
+            "max_pending_keys": 506,
+            "enqueued_writes": 772,
+            "flushed_writes": 76,
+            "flush_errors": 0
+          },
+          "client_p95_latency_ms_sampled": 504.47715500340564
+        }
+      },
+      "balanced": {
+        "load": {
+          "workers": 40,
+          "duration_s": 4.044970999995712,
+          "read_pct": 50,
+          "write_pct": 50,
+          "keys": 1000
+        },
+        "client": {
+          "requests": 278095,
+          "errors": 274794,
+          "throughput_rps": 68750.80192176775,
+          "avg_latency_ms": 0.5667925604479468
+        },
+        "server_delta": {
+          "strategy": "write_back",
+          "cache": {
+            "hits": 1641,
+            "misses": 10,
+            "hit_rate": 0.9939430648092066
+          },
+          "db": {
+            "reads": 10,
+            "writes": 125
+          },
+          "write_back": {
+            "pending_keys_end": 883,
+            "max_pending_keys": 883,
+            "enqueued_writes": 1650,
+            "flushed_writes": 0,
+            "flush_errors": 0
+          },
+          "client_p95_latency_ms_sampled": 19.16327500657644
+        }
+      },
+      "write-heavy": {
+        "load": {
+          "workers": 40,
+          "duration_s": 4.681499900005292,
+          "read_pct": 20,
+          "write_pct": 80,
+          "keys": 1000
+        },
+        "client": {
+          "requests": 5320,
+          "errors": 0,
+          "throughput_rps": 1136.3879341306802,
+          "avg_latency_ms": 31.684872951127478
+        },
+        "server_delta": {
+          "strategy": "write_back",
+          "cache": {
+            "hits": 1089,
+            "misses": 1,
+            "hit_rate": 0.9990825688073395
+          },
+          "db": {
+            "reads": 1,
+            "writes": 131
+          },
+          "write_back": {
+            "pending_keys_end": 994,
+            "max_pending_keys": 994,
+            "enqueued_writes": 4230,
+            "flushed_writes": 200,
+            "flush_errors": 0
+          },
+          "client_p95_latency_ms_sampled": 25.18872500877478
+        }
+      }
+    }
+  }
+}

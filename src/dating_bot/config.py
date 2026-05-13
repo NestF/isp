@@ -7,6 +7,7 @@ class Config:
     bot_token: str
     database_url: str
     redis_url: str
+    amqp_url: str
 
     city_bonus: float
     age_weight: float
@@ -21,6 +22,10 @@ class Config:
     match_bonus: float
     rating_min_events: int
     top_limit: int
+    primary_weight: float
+    behavior_weight: float
+    referral_weight: float
+    cache_ttl_sec: int
 
 
 def load_config() -> Config:
@@ -36,10 +41,15 @@ def load_config() -> Config:
     if not redis_url:
         raise RuntimeError("REDIS_URL не задан. Укажи Redis URL в .env")
 
+    amqp_url = os.getenv("AMQP_URL", "").strip()
+    if not amqp_url:
+        raise RuntimeError("AMQP_URL не задан. Укажи RabbitMQ URL в .env")
+
     return Config(
         bot_token=bot_token,
         database_url=database_url,
         redis_url=redis_url,
+        amqp_url=amqp_url,
         city_bonus=float(os.getenv("CITY_BONUS", "100.0")),
         age_weight=float(os.getenv("AGE_WEIGHT", "50.0")),
         rating_weight=float(os.getenv("RATING_WEIGHT", "0.2")),
@@ -52,5 +62,8 @@ def load_config() -> Config:
         match_bonus=float(os.getenv("MATCH_BONUS", "40.0")),
         rating_min_events=int(os.getenv("RATING_MIN_EVENTS", "5")),
         top_limit=int(os.getenv("TOP_LIMIT", "10")),
+        primary_weight=float(os.getenv("PRIMARY_WEIGHT", "0.45")),
+        behavior_weight=float(os.getenv("BEHAVIOR_WEIGHT", "0.45")),
+        referral_weight=float(os.getenv("REFERRAL_WEIGHT", "0.10")),
+        cache_ttl_sec=int(os.getenv("CACHE_TTL_SEC", "300")),
     )
-

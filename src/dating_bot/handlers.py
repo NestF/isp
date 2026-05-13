@@ -8,6 +8,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InputMediaPhoto, InputMediaVideo, Message
 
+from dating_bot.cache import ProfileCache
 from dating_bot.config import Config
 from dating_bot.fsm import Onboarding, Viewing
 from dating_bot.keyboards import (
@@ -19,10 +20,11 @@ from dating_bot.keyboards import (
     kb_profile_manage,
     kb_viewing,
 )
-from dating_bot.matching import pick_next_candidate
+from dating_bot.matching import build_candidate_batch, pick_next_candidate
 from dating_bot.models import UserProfile
 from dating_bot.rating import vote_dislike, vote_like
-from dating_bot.repository import delete_profile, get_matches, get_profile, upsert_profile
+from dating_bot.repository import add_referral, delete_profile, get_matches, get_profile, get_rank_info, upsert_profile
+from dating_bot.ranking import compute_behavior_score, compute_combined_score, compute_primary_score
 from dating_bot.text import format_profile_text
 
 router = Router()
@@ -189,17 +191,42 @@ async def send_menu(message: Message, state: FSMContext) -> None:
 
 
 @router.message(Command("start"))
-async def cmd_start(message: Message, state: FSMContext, session_factory, cfg: Config):
+async def cmd_start(message: Message, state: FSMContext, session_factory, cfg: Config, cache: ProfileCache | None):
+    referred_by = None
+    try:
+        parts = (message.text or "").split(maxsplit=1)
+        if len(parts) == 2:
+            arg = parts[1].strip()
+            if arg.isdigit():
+                referred_by = int(arg)
+                if referred_by == message.from_user.id:
+                    referred_by = None
+    except Exception:
+        referred_by = None
+
     async with session_factory() as session:
         profile = await get_profile(session, message.from_user.id)
 
     if profile:
+        if cache:
+            await cache.set_profile(message.from_user.id, _profile_to_dict(profile))
         await send_menu(message, state)
         return
+    if cache:
+        await cache.del_profile(message.from_user.id)
+        await cache.del_candidate(message.from_user.id)
 
     await state.clear()
     await state.set_state(Onboarding.full_name)
-    await state.update_data(media=[])
+    await state.update_data(media=[], referred_by=referred_by)
+    if referred_by:
+        async with session_factory() as session:
+            ref_profile = await get_profile(session, referred_by)
+            if ref_profile:
+                await add_referral(session, cfg, referred_by)
+                await session.commit()
+        if cache:
+            await cache.del_profile(referred_by)
     default_name = message.from_user.full_name or "Имя"
     await ask(message, state, "Как тебя зовут?", reply_markup=kb_name_default(default_name))
 
@@ -288,7 +315,7 @@ async def onboarding_media_video(message: Message, state: FSMContext):
 
 
 @router.message(Onboarding.media, F.text.in_({"➕ Добавить ещё", "✅ Готово", "⏭️ Пропустить"}))
-async def onboarding_media_controls(message: Message, state: FSMContext, cfg: Config, session_factory):
+async def onboarding_media_controls(message: Message, state: FSMContext, cfg: Config, session_factory, cache: ProfileCache | None):
     data = await state.get_data()
     media = list(data.get("media") or [])
 
@@ -311,17 +338,39 @@ async def onboarding_media_controls(message: Message, state: FSMContext, cfg: Co
         "full_name": data["full_name"],
         "age": data["age"],
         "city": data["city"],
+        "gender": None,
         "bio": data.get("bio") or "",
+        "interests": [],
+        "pref_age_min": max(18, int(data["age"]) - 3),
+        "pref_age_max": min(100, int(data["age"]) + 3),
+        "pref_gender": None,
+        "pref_city": data["city"],
         "media": media,
+        "primary_score": 0.0,
+        "behavior_score": 0.0,
+        "combined_score": 0.0,
+        "referral_score": 0.0,
         "rating_score": cfg.rating_initial,
         "likes_count": 0,
         "dislikes_count": 0,
         "matches_count": 0,
+        "dialogs_count": 0,
+        "referrals_count": 0,
+        "referred_by": data.get("referred_by"),
     }
+
+    primary = compute_primary_score(payload, cfg)
+    behavior = compute_behavior_score(payload)
+    payload["primary_score"] = primary
+    payload["behavior_score"] = behavior
+    payload["combined_score"] = compute_combined_score(payload, cfg)
+    payload["rating_score"] = payload["combined_score"]
 
     async with session_factory() as session:
         await upsert_profile(session, payload)
         await session.commit()
+        if cache:
+            await cache.set_profile(message.from_user.id, payload)
 
     await state.set_state(None)
     sent = await message.answer("Анкета создана.", reply_markup=kb_main())
@@ -334,15 +383,19 @@ async def home(message: Message, state: FSMContext):
 
 
 @router.message(F.text == "👤 Моя анкета")
-async def my_profile(message: Message, state: FSMContext, session_factory):
+async def my_profile(message: Message, state: FSMContext, session_factory, cache: ProfileCache | None):
     await cleanup_all(message, state)
     async with session_factory() as session:
         profile = await get_profile(session, message.from_user.id)
     if not profile:
+        if cache:
+            await cache.del_profile(message.from_user.id)
         sent = await message.answer("Анкеты нет. Напиши /start.", reply_markup=kb_main())
         await state.update_data(last_menu_message_id=sent.message_id)
         return
     p = _profile_to_dict(profile)
+    if cache:
+        await cache.set_profile(message.from_user.id, p)
     sent = await _send_profile_one_message(message, p, reply_markup=kb_profile_manage())
     if isinstance(sent, list):
         await state.update_data(last_card_message_ids=[m.message_id for m in sent], last_card_message_id=None)
@@ -366,7 +419,7 @@ async def delete_profile_ask(message: Message, state: FSMContext):
 
 
 @router.message(F.text.in_({"✅ Да, удалить", "❌ Отмена"}))
-async def delete_profile_confirm(message: Message, state: FSMContext, session_factory):
+async def delete_profile_confirm(message: Message, state: FSMContext, session_factory, cache: ProfileCache | None):
     data = await state.get_data()
     if not data.get("pending_delete"):
         return
@@ -382,15 +435,25 @@ async def delete_profile_confirm(message: Message, state: FSMContext, session_fa
     async with session_factory() as session:
         await delete_profile(session, message.from_user.id)
         await session.commit()
+    if cache:
+        await cache.del_profile(message.from_user.id)
+        await cache.del_candidate(message.from_user.id)
     await state.clear()
     sent = await message.answer("Анкета удалена.", reply_markup=kb_main())
     await state.update_data(last_menu_message_id=sent.message_id)
 
 
 @router.message(F.text == "💘 Мэтчи")
-async def matches(message: Message, state: FSMContext, session_factory):
+async def matches(message: Message, state: FSMContext, session_factory, cache: ProfileCache | None):
     await cleanup_all(message, state)
     async with session_factory() as session:
+        me = await get_profile(session, message.from_user.id)
+        if not me:
+            if cache:
+                await cache.del_profile(message.from_user.id)
+            sent = await message.answer("Сначала создай анкету через /start.", reply_markup=kb_main())
+            await state.update_data(last_menu_message_id=sent.message_id)
+            return
         profiles = await get_matches(session, message.from_user.id)
 
     if not profiles:
@@ -407,16 +470,53 @@ async def matches(message: Message, state: FSMContext, session_factory):
     await state.update_data(last_menu_message_id=sent.message_id)
 
 
+@router.message(F.text == "📈 Ранг")
+async def rank(message: Message, state: FSMContext, session_factory):
+    await cleanup_all(message, state)
+    async with session_factory() as session:
+        info = await get_rank_info(session, message.from_user.id)
+    if not info:
+        sent = await message.answer("Сначала создай анкету через /start.", reply_markup=kb_main())
+        await state.update_data(last_menu_message_id=sent.message_id)
+        return
+
+    text = (
+        f"📈 Ранг: {info['position']} из {info['total']}\n\n"
+        f"Уровень 1 (первичный): {round(info['primary_score'], 1)}\n"
+        f"Уровень 2 (поведенческий): {round(info['behavior_score'], 1)}\n"
+        f"Рефералы: {round(info['referral_score'], 1)}\n"
+        f"Итог (комбинированный): {round(info['combined_score'], 1)}"
+    )
+    sent = await message.answer(text, reply_markup=kb_main())
+    await state.update_data(last_menu_message_id=sent.message_id)
+
+
 @router.message(F.text == "👀 Смотреть анкеты")
-async def start_viewing(message: Message, state: FSMContext, cfg: Config, session_factory):
+async def start_viewing(message: Message, state: FSMContext, cfg: Config, session_factory, cache: ProfileCache | None):
     await cleanup_all(message, state)
     async with session_factory() as session:
         viewer = await get_profile(session, message.from_user.id)
         if not viewer:
+            if cache:
+                await cache.del_profile(message.from_user.id)
+                await cache.del_candidate(message.from_user.id)
             sent = await message.answer("Сначала создай анкету через /start.", reply_markup=kb_main())
             await state.update_data(last_menu_message_id=sent.message_id)
             return
-        candidate = await pick_next_candidate(session, cfg, viewer)
+        candidate = None
+        if cache:
+            next_id = await cache.pop_next(message.from_user.id)
+            if next_id:
+                candidate = await get_profile(session, int(next_id))
+        if not candidate:
+            ids = await build_candidate_batch(session, cfg, viewer, limit=10)
+            if cache:
+                await cache.replace_queue(message.from_user.id, ids)
+            if ids:
+                candidate = await get_profile(session, int(ids[0]))
+                if cache:
+                    await cache.pop_next(message.from_user.id)
+
         if not candidate:
             sent = await message.answer("Анкеты закончились.", reply_markup=kb_main())
             await state.update_data(last_menu_message_id=sent.message_id)
@@ -429,7 +529,7 @@ async def start_viewing(message: Message, state: FSMContext, cfg: Config, sessio
 
 
 @router.message(Viewing.active, F.text.in_({"❤️ Лайк", "💔 Дизлайк", "🏠 Домой"}))
-async def viewing_vote(message: Message, state: FSMContext, cfg: Config, session_factory):
+async def viewing_vote(message: Message, state: FSMContext, cfg: Config, session_factory, cache: ProfileCache | None, publisher=None):
     if message.text == "🏠 Домой":
         await home(message, state)
         return
@@ -453,16 +553,33 @@ async def viewing_vote(message: Message, state: FSMContext, cfg: Config, session
 
         matched = False
         if message.text == "❤️ Лайк":
-            matched = await vote_like(session, cfg, int(viewer.tg_id), int(target_id))
+            matched = await vote_like(session, cfg, int(viewer.tg_id), int(target_id), publisher=publisher)
         else:
-            await vote_dislike(session, cfg, int(viewer.tg_id), int(target_id))
+            await vote_dislike(session, cfg, int(viewer.tg_id), int(target_id), publisher=publisher)
 
         target_profile = None
         if matched:
             target_profile = await get_profile(session, int(target_id))
 
-        candidate = await pick_next_candidate(session, cfg, viewer)
+        candidate = None
+        if cache:
+            next_id = await cache.pop_next(message.from_user.id)
+            if next_id:
+                candidate = await get_profile(session, int(next_id))
+        if not candidate:
+            ids = await build_candidate_batch(session, cfg, viewer, limit=10)
+            if cache:
+                await cache.replace_queue(message.from_user.id, ids)
+            if ids:
+                candidate = await get_profile(session, int(ids[0]))
+                if cache:
+                    await cache.pop_next(message.from_user.id)
         await session.commit()
+
+    if cache:
+        await cache.del_candidate(message.from_user.id)
+        await cache.del_profile(message.from_user.id)
+        await cache.del_profile(int(target_id))
 
     if matched:
         try:
